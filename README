@@ -1,0 +1,123 @@
+This is the runtime test infrastructure of the Buildroot project.
+
+Configuration
+=============
+
+Before running the test suite, you need to adjust the configtest.py
+configuration file:
+
+ - srcdir should point to your Buildroot source code (it will not be
+   modified, all test builds are done out of tree)
+
+ - builddir should point to a directory where all the build
+   directories for the different tests will be executed
+
+Usage
+=====
+
+To run all tests, do:
+
+   python -m unittest discover tests
+
+To run all the tests of a specific test suite, do:
+
+   python -m unittest tests.fs.test_fs_iso9660
+
+To run only one specific test of a specific test suite, do:
+
+   python -m unittest tests.fs.test_fs_iso9660.TestIso9660GrubInternal
+
+For each test, a temporary directory called buildroot.<something> is
+created (and deleted at the end of the test). A log of the build is
+kept in buildroot.<something>-build.log, and a log of the runtime
+execution of the system (if done by the test) is kept in
+buildroot.<something>-run.log.
+
+Adding new tests
+================
+
+Look at the example in tests/. Basically, to write a new test you need
+to:
+
+ - Define a new class Test* that inherits fro basetest.BRTest
+
+ - Define a class variable called 'config' that gives the Buildroot
+   configuration to be built for this test. Buildroot will
+   automatically build it before running the test function itself.
+
+ - Implement a test_run() method that implements the core of the test
+   itself. It might check the build results, it might boot a system
+   under Qemu, run some commands inside the system and check the
+   results. It should use the Python unittest methods like
+   assertEqual(), assertTrue(), assertFalse() and so on to do the
+   checks.
+
+Internal architecture
+=====================
+
+basetest.py implements the BRTest class, which inherits from the
+Python unittest.TestCase class, and is used as the mother class of all
+Buildroot test cases. The main purpose of basetest.py is to implement
+the setUp() and tearDown() methods of unittest.TestCase:
+
+ - setUp() will create the build directory, start the build using the
+   Builder class, and initialize the System class in case the test
+   wants to boot the system.
+
+ - tearDown() will cleanup the build directory using the Builder
+   class.
+
+builder.py implements the Builder class, which is simply responsible
+for doing a Buildroot build: it constructor takes (amongst other
+things) the Buildroot configuration as arguments. Builder.build() will
+write this configuration file, do a olddefconfig, and start the
+build. Builder.delete() removes the build tree.
+
+system.py implements the System class, which allows to boot the
+generated system under Qemu and run some commands. The important
+methods are:
+
+ - boot(), which will start the booting process by starting Qemu
+
+ - login(), which will wait for the Buildroot login prompt to appear,
+   and login as root
+
+ - run(), that will run a certain command and return its result
+
+KEEP_BUILD / REUSE_BUILD
+========================
+
+By defaut, each test triggers a build of a given Buildroot
+configuration, and deletes the build result at the end of the
+test. Since it is not very convenient to wait for a full rebuild
+during the development of a test, the following workflow can be used:
+
+ KEEP_BUILD=y python -m unittest tests.fs.test_fs_iso9660.TestIso9660GrubInternal
+
+For the first test execution. It asks the test to keep the build
+directory around. Then, to trigger the same test without doing the
+rebuild (only run the test function itself), you can do:
+
+ KEEP_BUILD=y REUSE_BUILD=<path to build output> \
+   python -m unittest tests.fs.test_fs_iso9660.TestIso9660GrubInternal
+
+Of course, it only works if you run one single test, not a complete
+test suite.
+
+TODO
+====
+
+ * Find a way of running the tests in parallel. It will at least
+   require changing the System() to do a dynamic allocation of the
+   telnet port used by Qemu (currently fixed to 1234)
+
+ * Find a good way to get all the tests run by an automated test
+   system (Jenkins?).
+
+ * Write more tests.
+
+ * Improve the configuration mechanism (changing configtest.py is not
+   really great).
+
+ * And probably improve the infrastructure itself (my Python skills
+   are not great).
